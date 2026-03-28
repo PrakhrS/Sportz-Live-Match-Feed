@@ -21,30 +21,42 @@ function broadcast(wss, payload) {
 
 export function attachWebSocketServer(server) {
     const wss = new WebSocketServer({
-        server,
-        path: '/ws',
+        noServer: true,
         maxPayload: 1024 * 1024,
     })
 
-    wss.on('connection', async (socket, req) => {
+    server.on('upgrade', async (req, socket, head) => {
+        const pathname = req.url ? req.url.split('?')[0] : '';
+        if (pathname !== '/ws') {
+            return;
+        }
 
         if(wsArcjet){
             try {
                 const decision = await wsArcjet.protect(req)
 
                 if(decision.isDenied()){
-                    const code = decision.reason.isRateLimit() ? 1013 : 1008
-                    const reason = decision.reason.isRateLimit() ? 'Rate limit exceeded' : 'Access denied'
+                    const status = decision.reason.isRateLimit() ? 429 : 403
+                    const reason = decision.reason.isRateLimit() ? 'Too Many Requests' : 'Forbidden'
 
-                    socket.close(code, reason)
+                    socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`)
+                    socket.destroy()
                     return
                 }
             } catch (error) {
-                console.error('WS connection error', error)
-                socket.close(1011, 'Server security error')
+                console.error('WS upgrade error', error)
+                socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n')
+                socket.destroy()
                 return
             }
         }
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+            wss.emit('connection', ws, req)
+        })
+    })
+
+    wss.on('connection', (socket, req) => {
 
         socket.isAlive = true;
         
