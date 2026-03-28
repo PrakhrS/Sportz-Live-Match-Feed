@@ -1,14 +1,16 @@
 import Router from "express";
 import { matches } from "../db/schema.js";
-import { createMatchSchema } from "../validation/matches.js";
+import { createMatchSchema, listMatchesQuerySchema } from "../validation/matches.js";
 import { getMatchStatus } from "../utils/match-status.utils.js";
 import { db } from "../db/db.js";
 import { desc } from "drizzle-orm";
-import { listMatchesQuerySchema } from "../validation/matches.js";
+import { matchEvents } from "../events.js";
 
 export const matchRouter = Router();
 
 const MAX_LIMIT = 100
+
+matchRouter.get('/debug', (req, res) => res.json({ hasBroadcast: !!res.app.locals.broadcastMatchCreated }));
 
 matchRouter.get('/', async (req, res) => {
 
@@ -47,6 +49,8 @@ matchRouter.post('/', async (req, res) => {
             awayScore: awayScore ?? 0,
             status: getMatchStatus(startTime, endTime)
         }).returning()
+
+        matchEvents.emit('match_created', event);
 
         return res.status(201).json({ data: event })
 
