@@ -26,11 +26,34 @@ export function attachWebSocketServer(server) {
     })
 
     wss.on('connection', (socket) => {
+        socket.isAlive = true;
+        
+        socket.on('pong', () => {
+            socket.isAlive = true;
+        });
+
         console.log('[WS] New connection established!');
         sendJson(socket, { type: 'welcome' })
 
         socket.on('error', console.error)
     })
+
+    const interval = setInterval(() => {
+        for (const socket of wss.clients) {
+            if (socket.isAlive === false) {
+                console.log('[WS] Terminating inactive connection');
+                socket.terminate();
+                continue;
+            }
+
+            socket.isAlive = false;
+            socket.ping();
+        }
+    }, 30000);
+
+    wss.on('close', () => {
+        clearInterval(interval);
+    });
 
     matchEvents.on('match_created', (match) => {
         console.log('[WS] Received match_created event, broadcasting...');
